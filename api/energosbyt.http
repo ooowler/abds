@@ -1,0 +1,73 @@
+@base = http://localhost:8080
+
+### Доступность — 200, пустое тело
+GET {{base}}/ping
+
+### Объект — 200, карточка объекта
+GET {{base}}/realty/1
+
+### Собственник — 200, id, fio, phone, phone_prev
+GET {{base}}/users/1
+
+### 1. Смена ФИО — 204
+PATCH {{base}}/users/1
+Content-Type: application/json
+
+{"fio":"Соколов Алексей Ильич"}
+
+### 2а. Первый телефон — 204
+PATCH {{base}}/users/1
+Content-Type: application/json
+
+{"phone":"+79111111111"}
+
+### 2б. Второй телефон — 204
+PATCH {{base}}/users/1
+Content-Type: application/json
+
+{"phone":"+79222222222"}
+
+### 2в. История телефона — phone_prev равен +79111111111
+GET {{base}}/users/1
+
+### 3а. Старый тариф — цены 540/270
+GET {{base}}/tariffs?date=2025-10-31
+
+### 3б. Новый тариф — цены 620/310
+GET {{base}}/tariffs?date=2025-11-01
+
+### 4. Последний счёт — 200, один счёт в invoices, count равен 36
+GET {{base}}/realty/1/invoices?limit=1&offset=0
+
+### 5а. Первое показание — 201
+POST {{base}}/realty/1/readings
+Content-Type: application/json
+
+{"user_id":1,"gauge_id":1,"tariff_id":1,"reading_date":"2026-10-01","day_kw":8500,"night_kw":2300}
+
+### 5б. Корректировка — 201
+POST {{base}}/realty/1/readings
+Content-Type: application/json
+
+{"user_id":1,"gauge_id":1,"tariff_id":1,"reading_date":"2026-10-01","day_kw":8510,"night_kw":2300}
+
+### 5в. Показание за дату — count равен 1, day_kw равен 8510
+GET {{base}}/realty/1/readings?date_from=2026-10-01&date_to=2026-10-01
+
+### 6. Замена счётчика — 201, итог проверяется в fact_gauge_bindings
+POST {{base}}/realty/1/gauges
+Content-Type: application/json
+
+{"gauge_id":2}
+
+### 7. Ошибочное показание — 201, затем удаляется SQL-командой из README
+POST {{base}}/realty/1/readings
+Content-Type: application/json
+
+{"user_id":1,"gauge_id":2,"tariff_id":1,"reading_date":"2026-11-01","day_kw":85100,"night_kw":2300}
+
+### Ошибка клиента — 400, {"message":"invalid \"limit\" parameter"}
+GET {{base}}/realty/1/invoices?limit=-1
+
+### Объект отсутствует — 404, {"message":"Not found"}
+GET {{base}}/realty/999999999
