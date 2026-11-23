@@ -1,22 +1,44 @@
-.PHONY: run rund services stop clean
 .DEFAULT_GOAL = run
+.PHONY: run rund services stop clean gen load setup teardown schema
 
-# Runs all services in detached mode.
+compose = docker compose --env-file .env.local
+client = $(compose) exec -T clickhouse sh -c 'exec clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --database "$$CLICKHOUSE_DATABASE" "$$@"' client
+tables = dim_realty dim_gauges dim_tariffs dim_users fact_gauge_bindings fact_meter_readings fact_invoice
+
 run:
-	docker compose --env-file .env.local up -d --build
+	$(compose) up -d --build
 
-# Runs all services without detached mode (for debugging).
 rund:
-	docker compose --env-file .env.local up --build
+	$(compose) up --build
 
-# Shows all service statuses.
 services:
-	docker compose ps
+	$(compose) ps
 
-# Stops all running services.
 stop:
-	docker compose down
+	$(compose) down
 
-# Cleans up all resources including volumes.
 clean:
-	docker compose down -v
+	$(compose) down -v
+
+gen:
+	python3 scripts/generate.py
+
+schema:
+	$(compose) up -d --no-recreate --wait clickhouse
+	$(client) --multiquery < scripts/schema.sql
+
+load:
+	@set -e; for table in $(tables); do test -s "data/$$table.csv"; done
+	$(client) --multiquery --query "$(foreach table,$(tables),TRUNCATE TABLE $(table);)"
+	@set -e; for table in $(tables); do \
+		$(client) --query "INSERT INTO $$table FORMAT CSV" < "data/$$table.csv"; \
+	done
+
+setup:
+	$(MAKE) schema
+	$(MAKE) gen
+	$(MAKE) load
+
+teardown:
+	$(client) --multiquery --query "$(foreach table,$(tables),DROP TABLE IF EXISTS $(table) SYNC;)"
+	rm -rf data/
